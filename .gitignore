@@ -1,6 +1,7 @@
 # Game files and generated content
 /assets/
-/generated/
+/generated/*
+!/generated/rexglue.cmake
 
 # Builds and outputs
 /out/
@@ -12,6 +13,12 @@
 
 # Local tools
 /tools/
+
+# PS5: personal build settings and dashboard icon
+/ps5/build.local.sh
+/ps5/sce_sys/icon0.local.png
+/game
+/default.xex
 
 # Analysis, backups and evidence
 /analysis-*/

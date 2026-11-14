@@ -1,0 +1,37 @@
+# Infinite Undiscovery Recomp PS5: optional switches. Rename this file to
+# ps5-env.txt in the title folder (/data/homebrew/PPSA99215/) to use it. A
+# title gets no environment, so ps5_title.cpp reads KEY=VALUE lines from it
+# before main.
+#
+# Any SDK setting (cvar) can be set as REX_<NAME>: gpu_vsync -> REX_GPU_VSYNC.
+# Lines starting with # are ignored. The GPU settings below come from the
+# Fable 2 PS5 port, which shares this SDK branch; see its notes for details.
+
+# Log every Vulkan debug message (slow; for chasing renderer problems).
+#REX_VULKAN_LOG_DEBUG_MESSAGES=true
+
+# Sampling profiler: where each thread spends its time, every 10 s, in
+# /app0/profile.txt (symbolize with symbols/iu.elf from the build).
+#REX_PROFILE=1
+#REX_PROFILE_HZ=250
+#REX_PROFILE_INTERVAL=10
+
+# Performance overlay (FPS, thread load, memory) at startup; L3 + R3 toggles it.
+#REX_SHOW_DEBUG_OVERLAY=true
+
+# RADV's GPU wait: microseconds to sleep between polls once its 1.5 ms spin
+# is over (RADV itself sleeps 1000; 0 = just yield).
+#IU_RADV_WAIT_US=100
+
+# If geometry or textures look stale or garbled, try these one at a time.
+#REX_SHARED_MEMORY_HOT_PAGE_CHECK_EPOCHS=false
+#REX_VULKAN_DYNAMIC_CONSTANT_BUFFERS=false
+#REX_SHARED_MEMORY_WIDEN_INTO_WATCHED_PAGES=true
+
+# GPU work pipelining (PS5 defaults on). Turn off if something renders wrongly.
+#REX_VULKAN_SUBMIT_THREAD=false
+#REX_VULKAN_DRAW_ENCODE_THREAD=false
+#REX_VULKAN_SUBMIT_EVERY_DRAWS=0
+
+# Full allocation stacks in debug-heap reports (IU_PS5_DEBUG_HEAP=ON builds).
+#IU_DEBUG_HEAP_STACKS=1

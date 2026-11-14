@@ -9,18 +9,45 @@ if(WIN32)
     enable_language(RC)
 endif()
 
+# PlayStation 5 homebrew (the PS5 payload SDK's toolchain sets PS5): Vulkan
+# through the SDK's Xenos GPU, linked and packaged as a title. See
+# cmake/IuPs5.cmake and docs/PS5.md.
+if(PS5)
+    include(cmake/IuPs5.cmake)
+endif()
+
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(generated/rexglue.cmake)
 
 # Sources
-set(INFINITEUNDISCOVERY_SOURCES
-    src/main.cpp
-    src/asset_setup.cpp
-    src/asset_dlc.cpp
-    src/portable_setup.cpp
-)
+if(PS5)
+    # The console has no setup wizard, Win32 dialogs or D3D12 diagnostics: the
+    # title folder holds the installed assets (docs/PS5.md), and
+    # src/ps5/iu_ps5_app.h is the app. Title setup before main, and libc names
+    # the console does not export, come from src/platform/.
+    set(INFINITEUNDISCOVERY_SOURCES
+        src/main.cpp
+        src/platform/ps5_title.cpp
+        src/platform/ps5_radv_wait.cpp
+        src/platform/ps5_libc.cpp
+        src/platform/ps5_debug_heap.cpp)
+else()
+    set(INFINITEUNDISCOVERY_SOURCES
+        src/main.cpp
+        src/asset_setup.cpp
+        src/asset_dlc.cpp
+        src/portable_setup.cpp
+    )
+endif()
+# PS5: the checking allocator (src/platform/ps5_debug_heap.cpp), for chasing
+# heap damage. Only that file's flags change, so switching it rebuilds one file.
+option(IU_PS5_DEBUG_HEAP "PS5: guard every heap block and report the first damaged one" OFF)
+if(PS5 AND IU_PS5_DEBUG_HEAP)
+    set_source_files_properties("${CMAKE_CURRENT_SOURCE_DIR}/src/platform/ps5_debug_heap.cpp"
+        PROPERTIES COMPILE_DEFINITIONS IU_PS5_DEBUG_HEAP=1 SKIP_PRECOMPILE_HEADERS ON)
+endif()
 
 if(WIN32)
     list(APPEND INFINITEUNDISCOVERY_SOURCES src/infinite_undiscovery.rc)
@@ -59,6 +86,6 @@ if(WIN32)
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify_rexglue_dlls.cmake"
         COMMENT "Verifying staged ReXGlue DLLs (auditable v0.10.0 hashes)"
         VERBATIM)
-else()
+elseif(NOT PS5)
     message(FATAL_ERROR "Asset Setup currently requires Windows; do not imply cross-platform support.")
 endif()

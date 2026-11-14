@@ -1,0 +1,4 @@
+[submodule "thirdparty/rexglue-sdk"]
+	path = thirdparty/rexglue-sdk
+	url = https://github.com/dragonscales123/rexglue-sdk-PS5.git
+	branch = fable2-ps5

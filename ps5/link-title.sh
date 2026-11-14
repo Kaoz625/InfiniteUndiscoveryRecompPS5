@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# Infinite Undiscovery Recomp - link the PS5 title and package its folder (from
+# Fable 2 Recomp PS5's ps5/link-title.sh, after re:Blue PS5 and Lost Odyssey PS5).
+#
+#   link-title.sh CONFIG OUTPUT [OBJECT | ARCHIVE | -o PATH | other link flags]...
+#
+# The PS5 build (cmake/IuPs5.cmake) makes this CMake's link rule for
+# executables, so it receives the runtime's objects and CMake's fully resolved
+# static libraries. The link itself is Mihawk's PS5_Vulkan recipe, as
+# PS5_VulkanTemplate's ps5/tools/link-title.sh runs it: RADV's release archive,
+# the platform layer of the payload SDK (heap, thread and libc wraps), the CRT,
+# the AGC import stubs, then the native tool (ELF -> the console's fake SELF)
+# and PS5_Vulkan's clean-room libc.prx. CONFIG (written at configure time)
+# names those inputs and the title.
+#
+# The title folder (<dist>/<TITLE_ID>/) gets eboot.bin, sce_sys/ and
+# sce_module/libc.prx; OUTPUT is the linked ELF, so CMake sees its target. The
+# game files (assets/disc1/, assets/disc2/) are copied in separately (docs/PS5.md).
+
+set -euo pipefail
+[[ -n ${LINK_TRACE:-} ]] && set -x
+
+config=$1 output=$2
+shift 2
+# shellcheck source=/dev/null
+source "$config" # vulkan, sdk, title_id, title_name, dist, param_template, icon, env_example, work
+
+objects=() archives=()
+while (($#)); do
+    case $1 in
+        -o) output=$2; shift 2; continue ;;
+        *.o | *.obj) objects+=("$1") ;;
+        *.a) archives+=("$1") ;;
+        # The SDK's stub libraries (every *.so below) stand for the console's
+        # modules; libraries named to a desktop linker add nothing here.
+        -l* | -pthread | -Wl,* | -rdynamic | -f* | -O* | -m* | --*) ;;
+        *) echo "link-title.sh: ignoring link argument '$1'" >&2 ;;
+    esac
+    shift
+done
+
+archive=$vulkan/.deps/native/radv-release/lib/libvulkan_radeon.ps5.a
+tool=$vulkan/build/host/ps5-native-tool
+native=$vulkan/tooling/native
+for file in "$archive" "$tool" "$param_template" "$sdk/bin/prospero-lld" "$vulkan/tools/radv-link.sh" \
+        "$vulkan/runtime/libc.prx"; do
+    [[ -e $file ]] || { echo "link-title.sh: missing $file (see docs/PS5.md)" >&2; exit 2; }
+done
+mkdir -p "$work/link/obj" "$work/link/stubs"
+export PS5_CLANG=${PS5_CLANG:-$(command -v clang-20 || command -v clang || true)}
+cc() { PS5_PAYLOAD_SDK="$sdk" sh "$vulkan/tooling/prospero-clang18" "$@"; }
+
+# The CRT; the C++ runtime is libc++abi's (the runtime throws and catches).
+cc -std=c++20 -O2 -fno-exceptions -fno-rtti -c "$native/app_crt.cpp" -o "$work/link/obj/app_crt.o"
+# RADV calls AGC, which the SDK has no stubs for: these name its imports.
+stub() {
+    local library=$1 source=$2
+    cc -std=c11 -O2 -fPIC -c "$vulkan/$source" -o "$work/link/obj/${library}_stub.o"
+    "$sdk/bin/prospero-lld" --shared -soname "${library}.prx" \
+        -o "$work/link/stubs/${library}.so" "$work/link/obj/${library}_stub.o"
+}
+stub libSceAgc vendor/ps5/sdk/stubs/agc_canary_link_stub.c
+stub libSceAgcDriver vendor/ps5/sdk/stubs/agc_driver_canary_link_stub.c
+
+# shellcheck source=/dev/null
+source "$vulkan/tools/radv-link.sh"
+radv_link_recipe "$vulkan" "$sdk" "$archive" || exit 2
+
+# The SDK builds with -mcmodel=large, so code and data land in the large-model
+# sections, one per function (.ltext.*, .lrodata.*, .ldata.*, .lbss.*).
+# PS5_Vulkan's layout names only the small-model ones, so each large one
+# stays an output section of its own: a recompiled game has tens of thousands, past
+# the ELF header's 65,279 limit, and ps5-native-tool rejects the file ("ELF
+# section table overruns input"). A copy of the layout that merges them into
+# .text, .rodata, .data and .bss keeps the title to a handful of sections.
+ld_dir=$work/link/ld
+rm -rf "$ld_dir"  # fresh each link: a copy left by the last one is not patched again
+mkdir -p "$ld_dir"
+patched_script=() search_dirs=()
+for ((i = 0; i < ${#radv_linker_script[@]}; i++)); do
+    case ${radv_linker_script[i]} in
+        -T) script=${radv_linker_script[++i]}; cp "$script" "$ld_dir/"
+            patched_script+=(-T "$ld_dir/${script##*/}") ;;
+        -L) search_dirs+=("${radv_linker_script[++i]}") ;;
+        *) patched_script+=("${radv_linker_script[i]}") ;;
+    esac
+done
+merged=0
+for dir in "${search_dirs[@]}"; do
+    for layout in "$dir"/*.ld; do
+        [[ -f $layout && ! -e $ld_dir/${layout##*/} ]] || continue
+        sed -e 's/\*(\.text \.text\.\*)/*(.text .text.* .ltext .ltext.*)/' \
+            -e 's/\*(\.rodata \.rodata\.\*)/*(.rodata .rodata.* .lrodata .lrodata.*)/' \
+            -e 's/\*(\.data \.data\.\*)/*(.data .data.* .ldata .ldata.*)/' \
+            -e 's/\*(\.bss \.bss\.\*)/*(.bss .bss.* .lbss .lbss.*)/' "$layout" > "$ld_dir/${layout##*/}"
+        grep -q '\.ltext \.ltext\.\*' "$ld_dir/${layout##*/}" && merged=1
+    done
+done
+((merged)) || { echo "link-title.sh: no PS5_Vulkan layout with a .text rule to merge .ltext into" >&2; exit 2; }
+radv_linker_script=("${patched_script[@]}" -L "$ld_dir")
+for dir in "${search_dirs[@]}"; do radv_linker_script+=(-L "$dir"); done
+
+# libc names the recipe does not bind yet but the runtime calls: libc's
+# getcwd asks __getcwd, which only libkernel_sys exports, so it faults in a
+# title (std::filesystem::current_path, realpath, canonical). The platform
+# layer has working versions; bind them and keep the names local, as the
+# recipe keeps its own.
+platform_symbols=$("$sdk/bin/llvm-nm" --defined-only "$sdk/target/lib/libps5platform.a" 2>/dev/null || true)
+extra_local=()
+for name in getcwd realpath; do
+    if grep -q " T ps5_$name$" <<<"$platform_symbols" &&
+            [[ " ${radv_link_flags[*]} " != *" --defsym=$name=ps5_$name "* ]]; then
+        radv_link_flags+=("--defsym=$name=ps5_$name")
+        extra_local+=("$name")
+    fi
+done
+# The libc names src/platform/ps5_libc.cpp defines stay local too: a
+# console module defines some of them, and a title publishes no exports.
+extra_local+=(pathconf ffs tempnam timegm backtrace_symbols fork setsid isatty)
+# The checking allocator (IU_PS5_DEBUG_HEAP) defines abort(), so its scan
+# runs first: local too, or the linker would export it over libc's. Only then:
+# a version script may not name a symbol the link does not define.
+for object in "${objects[@]}"; do
+    if [[ $object == *ps5_debug_heap.cpp.o ]] &&
+            "$sdk/bin/llvm-nm" --defined-only "$object" 2>/dev/null | grep -q " T abort$"; then
+        extra_local+=(abort)
+    fi
+done
+# A title must not exit(): it asks the shell to close it
+# (src/platform/ps5_title.cpp defines the wrappers).
+radv_link_flags+=(--wrap=exit --wrap=_exit --wrap=_Exit)
+# RADV's GPU wait sleeps 1 ms between marker polls; this title cuts that to
+# 100 us (src/platform/ps5_radv_wait.cpp).
+radv_link_flags+=(--wrap=radv_ps5_sleep_us)
+# Infinite Undiscovery's own hooks over SDK functions (src/ps5/iu_ps5_app.h):
+# the fiber switch keeps each continuation's LR (fiber_lr.h on Windows), and
+# XamSwapDisc selects the mounted disc (disc_swap.h). Windows reaches the
+# originals through rexruntime.dll; a static title wraps them.
+radv_link_flags+=(--wrap=rexcrt_SwitchToFiber --wrap=__imp__XamSwapDisc)
+if ((${#extra_local[@]})); then
+    {
+        printf '{\n    local:\n'
+        printf '        %s;\n' "${extra_local[@]}"
+        printf '};\n'
+    } > "$work/link/iu-local.map"
+    radv_link_flags+=(--version-script "$work/link/iu-local.map")
+fi
+
+# Every error at once: a title link is long, and the first ones hide the rest.
+"$sdk/bin/prospero-lld" "${radv_linker_script[@]}" --eh-frame-hdr --error-limit=0 "${radv_link_flags[@]}" \
+    --version-script "$native/app-symbols.map" --exclude-libs=ALL \
+    -e _start -o "$work/link/llvm-pie.elf" \
+    "$work/link/obj/app_crt.o" "${objects[@]}" \
+    --start-group "${archives[@]}" --end-group \
+    "$work/link/stubs/libSceAgc.so" "$work/link/stubs/libSceAgcDriver.so" \
+    "${radv_link_inputs[@]}" \
+    --as-needed "$sdk"/target/lib/*.so
+
+# ps5-native-tool reads the section count from the ELF header, which holds
+# at most 65,279 (more is stored elsewhere, as 0 in the header).
+section_count=$(python3 -c 'import struct,sys; f=open(sys.argv[1],"rb"); f.seek(0x3c); print(struct.unpack("<H",f.read(2))[0])' \
+    "$work/link/llvm-pie.elf")
+if ((section_count == 0)); then
+    echo "link-title.sh: the linked ELF has more than 65,279 sections, which ps5-native-tool cannot read" >&2
+    exit 1
+fi
+echo "link-title.sh: $section_count sections in the linked ELF"
+
+# An import that no module a title loads exports is null at run time, and its
+# first call jumps to address 0: refuse the title here, not on the console.
+null_imports=$(comm -23 \
+    <("$sdk/bin/llvm-nm" -D --undefined-only "$work/link/llvm-pie.elf" |
+        awk '$1 == "U" { sub(/@.*/, "", $2); print $2 }' | sort -u) \
+    <(for library in "$sdk"/target/lib/*.so "$work/link/stubs/libSceAgc.so" "$work/link/stubs/libSceAgcDriver.so"; do
+        case ${library##*/} in libkernel_sys.so | libScePosixForWebKit.so) continue ;; esac
+        "$sdk/bin/llvm-nm" -D --defined-only "$library" 2>/dev/null | awk '{ print $NF }'
+    done | sort -u))
+if [[ -n $null_imports ]]; then
+    echo "link-title.sh: imports that no module a title loads exports (null at run time): ${null_imports//$'\n'/ }" >&2
+    if [[ -z ${IU_PS5_ALLOW_NULL_IMPORTS:-} ]]; then
+        echo "link-title.sh: bind them to the platform layer, or set IU_PS5_ALLOW_NULL_IMPORTS=1 to accept them" >&2
+        exit 1
+    fi
+fi
+
+"$tool" link --in "$work/link/llvm-pie.elf" --out "$work/eboot.elf.new" \
+    --stub-dir "$sdk/target/lib" --stub "$work/link/stubs/libSceAgc.so" \
+    --stub "$work/link/stubs/libSceAgcDriver.so" --module-sdk 0x02000009 \
+    --companion-sdk 0x08050001 --file-name eboot.elf
+
+# The title folder.
+app="$dist/$title_id"
+mkdir -p "$app/sce_sys" "$app/sce_module"
+"$tool" self --sign --in "$work/eboot.elf.new" --out "$app/eboot.bin" --magic 0x1D3D154F
+"$tool" self --inspect --file "$app/eboot.bin" > /dev/null
+python3 - "$param_template" "$app/sce_sys/param.json" "$title_id" "$title_name" <<'PY'
+import json, sys
+template, out, title_id, name = sys.argv[1:]
+param = json.load(open(template))
+param["titleId"] = title_id
+param["conceptId"] = title_id[4:]
+param["contentId"] = f"UP9000-{title_id}_00-IUNDISCPS500000"
+param["localizedParameters"]["en-US"]["titleName"] = name
+json.dump(param, open(out, "w"), indent=2)
+PY
+# A personal icon (icon0.local.png next to the placeholder, ignored by git)
+# wins over the placeholder, so it survives rebuilds and stays unpublished.
+local_icon="$(dirname "$icon")/icon0.local.png"
+[[ -f $local_icon ]] && icon=$local_icon
+cp "$icon" "$app/sce_sys/icon0.png"
+[[ -f ${env_example:-} ]] && cp "$env_example" "$app/ps5-env.example.txt"
+# Where the game files go (copied in separately, docs/PS5.md).
+mkdir -p "$app/assets/disc1" "$app/assets/disc2"
+(cd "$vulkan/runtime" && sha256sum --check --strict --quiet libc.prx.sha256)
+cp "$vulkan/runtime/libc.prx" "$app/sce_module/libc.prx"
+mv "$work/eboot.elf.new" "$output"
+radv_revision=$(sed -n 's/^revision: //p' "$(dirname "$(dirname "$archive")")/PROVENANCE.txt" 2>/dev/null || true)
+printf '==> %s: %s (eboot.bin %s bytes; RADV %s)\n' "$title_id" "$app" \
+    "$(stat -c %s "$app/eboot.bin")" "${radv_revision:0:11}"

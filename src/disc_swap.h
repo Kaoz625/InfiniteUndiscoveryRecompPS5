@@ -1,6 +1,8 @@
 #pragma once
 
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include <array>
 #include <cstdint>
 #include <cstdio>
@@ -22,9 +24,16 @@
 #include <rex/system/xevent.h>
 #include <rex/kernel/xboxkrnl/threading.h>
 
+#ifdef _WIN32
 #include "asset_setup.h"
 #include "iu_trace.h"
 #include "vblank_diag.h"
+#else
+// PS5 (docs/PS5.md): no Asset Setup, iu_trace or vblank diagnostics, which are
+// built on Win32. Swaps log through the SDK's logger, and a disc folder is
+// checked for its files rather than hashed (the player installs them).
+#include <rex/logging.h>
+#endif
 
 namespace iu::disc_swap {
 
@@ -63,17 +72,22 @@ inline void LogSwap(const char* fmt, ...) {
   vsnprintf(buf, sizeof(buf), fmt, args);
   va_end(args);
 
+#ifdef _WIN32
   // Emit to iu_trace
   iu::trace::emit(iu::trace::kGeneral, "%s", buf);
 
   // Log to diagnostic.log
   vb::log("%s", buf);
+#else
+  REXLOG_INFO("[DISC_SWAP] {}", buf);
+#endif
 
   // Print to console
   std::printf("[DISC_SWAP] %s\n", buf);
   std::fflush(stdout);
 }
 
+#ifdef _WIN32
 inline bool PatchIAT(const char* target_dll, const char* target_func, void* new_func_ptr) {
   HMODULE hModule = GetModuleHandleW(nullptr);
   if (!hModule) return false;
@@ -121,6 +135,8 @@ inline bool PatchIAT(const char* target_dll, const char* target_func, void* new_
   }
   return patched;
 }
+
+#endif  // _WIN32
 
 // ctx.r4 is the guest object pointer (from ObReferenceObjectByHandle in
 // sub_82958C78) of the KEVENT the guest waits on via NtWaitForSingleObjectEx.
@@ -179,6 +195,34 @@ inline bool SelectAliases(rex::filesystem::VirtualFileSystem* vfs,
   }
 }
 
+// Disc identity checks. Windows inspects and hashes the installed media
+// (asset_setup.cpp); the PS5 checks that each disc folder holds its files.
+#ifdef _WIN32
+inline void ValidateDisc2(const std::filesystem::path& disc1,
+                          const std::filesystem::path& disc2) {
+  iu::assets::ValidatePair(iu::assets::Inspect(disc1), iu::assets::Inspect(disc2));
+}
+inline void ValidateDisc1(const std::filesystem::path& disc1) {
+  auto disc = iu::assets::Inspect(disc1);
+  if (disc.number != 1) throw std::runtime_error("target is not Disc 1");
+  iu::assets::ValidatePair(disc, std::nullopt);
+}
+#else
+inline void RequireDiscFiles(const std::filesystem::path& root) {
+  for (const char* name : {"default.xex", "ud1.bin", "ud2.bin"}) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(root / name, ec))
+      throw std::runtime_error(std::string("missing ") + (root / name).string());
+  }
+}
+inline void ValidateDisc2(const std::filesystem::path& disc1,
+                          const std::filesystem::path& disc2) {
+  RequireDiscFiles(disc1);
+  RequireDiscFiles(disc2);
+}
+inline void ValidateDisc1(const std::filesystem::path& disc1) { RequireDiscFiles(disc1); }
+#endif
+
 // Runs from OnPostSetup before LaunchModule. No mount is created by a swap.
 inline bool PrepareMounts(rex::Runtime* runtime,
                           const std::filesystem::path& portable_root) {
@@ -209,9 +253,7 @@ inline bool PrepareMounts(rex::Runtime* runtime,
   auto& second = g_state.mounts[1];
   second.host_path = g_state.assets_root / "disc2";
   try {
-    auto disc1 = iu::assets::Inspect(first.host_path);
-    auto disc2 = iu::assets::Inspect(second.host_path);
-    iu::assets::ValidatePair(disc1, disc2);
+    ValidateDisc2(first.host_path, second.host_path);
     auto device = std::make_unique<rex::filesystem::HostPathDevice>(
         second.device_path, second.host_path, true, false);
     if (!device->Initialize()) throw std::runtime_error("Disc 2 initialization failed");
@@ -263,14 +305,10 @@ inline void Hook_XamSwapDisc(PPCContext& ctx, uint8_t* base) {
       throw std::runtime_error("target disc folder does not exist");
     }
 
-    auto disc1 = iu::assets::Inspect(disc1_path);
-    auto target_disc = iu::assets::Inspect(target_path);
-
     if (requested == 2) {
-      iu::assets::ValidatePair(disc1, target_disc);
+      ValidateDisc2(disc1_path, target_path);
     } else if (requested == 1) {
-      if (target_disc.number != 1) throw std::runtime_error("target is not Disc 1");
-      iu::assets::ValidatePair(target_disc, std::nullopt);
+      ValidateDisc1(target_path);
     }
   } catch (const std::exception& e) {
     LogSwap("DISC_SWAP_FAILED reason=\"%s\"", e.what());
@@ -324,9 +362,16 @@ inline bool Install(rex::Runtime* runtime, const std::filesystem::path& portable
     fd_hooked = runtime->function_dispatcher()->SetFunction(0x829687EC, Hook_XamSwapDisc);
   }
 
-  // 2. IAT patch in main module
+  // 2. Direct calls from the recompiled code. Windows patches the import in
+  // the main module; a PS5 title is linked with --wrap=__imp__XamSwapDisc
+  // (ps5/link-title.sh), and __wrap___imp__XamSwapDisc (src/ps5/iu_ps5_app.h)
+  // forwards here, so those calls are always hooked.
+#ifdef _WIN32
   bool iat_hooked_1 = PatchIAT("rexruntime.dll", "__imp__XamSwapDisc", reinterpret_cast<void*>(&Hook_XamSwapDisc));
   bool iat_hooked_2 = PatchIAT("rexruntime.dll", "XamSwapDisc", reinterpret_cast<void*>(&Hook_XamSwapDisc));
+#else
+  const bool iat_hooked_1 = true, iat_hooked_2 = false;
+#endif
 
   g_state.installed = true;
 
