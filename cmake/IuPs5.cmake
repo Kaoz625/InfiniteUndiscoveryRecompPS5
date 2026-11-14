@@ -6,8 +6,8 @@
 #   IU_PS5_VULKAN_DIR   PS5_Vulkan checkout with its RADV release archive
 #   IU_PS5_TITLE_ID     PPSAxxxxx title id written to sce_sys/param.json
 #   REXSDK_DIR          the ReXGlue SDK tree with its PS5 changes
-#                       (thirdparty/rexglue-sdk, branch fable2-ps5:
-#                       the PS5 port with the Xenos GPU on Vulkan)
+#                       (thirdparty/rexglue-sdk, branch iu-ps5:
+#                       fable2-ps5, the Xenos GPU on Vulkan, plus IU fixes)
 #   REXGLUE_HOST_TOOL   host rexglue from that tree (runs codegen)
 #
 # Like Fable 2, Infinite Undiscovery renders through the SDK's Xenos GPU (Vulkan), which

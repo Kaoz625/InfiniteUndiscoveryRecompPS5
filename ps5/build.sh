@@ -14,7 +14,7 @@
 # folder under /mnt/c, and the unstripped ELF to DIR/symbols/iu.elf.
 #
 # Needs: your own Infinite Undiscovery default.xex (USA or Europe), the SDK
-# submodule (thirdparty/rexglue-sdk, branch fable2-ps5), a PS5 payload SDK and
+# submodule (thirdparty/rexglue-sdk, branch iu-ps5), a PS5 payload SDK and
 # PS5_Vulkan with its RADV release archive built, and clang/lld 20 on the host.
 # Writes out/build/ps5/dist/<TITLE_ID>/.
 #
@@ -72,7 +72,7 @@ if [[ ! -f $rexsdk/include/rex/platform.h ]]; then
     git -C "$root" submodule update --init thirdparty/rexglue-sdk
 fi
 grep -q REX_PLATFORM_PS5 "$rexsdk/include/rex/platform.h" ||
-    { echo "thirdparty/rexglue-sdk is not the PS5 SDK (rexglue-sdk-PS5, branch fable2-ps5)" >&2; exit 2; }
+    { echo "thirdparty/rexglue-sdk is not the PS5 SDK (rexglue-sdk-PS5, branch iu-ps5)" >&2; exit 2; }
 git -C "$rexsdk" submodule update --init --recursive --depth 1 > /dev/null
 
 # Codegen reads assets/default.xex (infinite_undiscovery_manifest.toml): Disc

@@ -33,5 +33,9 @@
 #REX_VULKAN_DRAW_ENCODE_THREAD=false
 #REX_VULKAN_SUBMIT_EVERY_DRAWS=0
 
+# Host stack per guest fiber, in KiB (default 256). The game runs 500+
+# fibers; if runtime.log reports "host stack overflow", raise this.
+#REX_FIBER_HOST_STACK_KB=512
+
 # Full allocation stacks in debug-heap reports (IU_PS5_DEBUG_HEAP=ON builds).
 #IU_DEBUG_HEAP_STACKS=1

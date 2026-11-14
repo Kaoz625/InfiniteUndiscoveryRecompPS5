@@ -4,10 +4,11 @@ This branch (`ps5-port`) builds Infinite Undiscovery Recomp as a homebrew title
 for a jailbroken PS5 (title id `PPSA99215`). Like the Fable 2 PS5 port, it
 renders through the ReXGlue SDK's Xenos GPU emulation on its Vulkan backend,
 with Mesa's RADV linked into the title, and runs on the SDK's PS5 port
-(github.com/dragonscales123/rexglue-sdk-PS5, branch `fable2-ps5`: the PS5
-port with the Xenos GPU working on the console).
+(github.com/dragonscales123/rexglue-sdk-PS5, branch `iu-ps5`: the `fable2-ps5`
+branch, where the Xenos GPU works on the console, plus fixes this game needs).
 
-Status: **work in progress, not yet booted on a console.**
+Status: **work in progress.** Boots to the opening logos; the first runs
+crashed when the opening credits start (fiber host stacks, see below).
 
 You need your own copy of Infinite Undiscovery (USA or Europe). Nothing from
 the game is in this repository, and nothing derived from it should be
@@ -76,7 +77,17 @@ There is no setup wizard on the console, and the disc files are not hashed
 there: copy the files as they are on your discs.
 
 Logs go to `logs/runtime.log`; `boot.txt` records start-up and any early
-crash. `ps5-env.txt` (from `ps5-env.example.txt`) sets SDK options.
+crash, and the SDK writes faults to `faults.txt`. `ps5-env.txt` (from
+`ps5-env.example.txt`) sets SDK options.
+
+## Fibers
+
+The game runs a pool of over 500 guest fibers. On the PS5 each one's host
+stack is a plain heap block (`REX_FIBER_HOST_STACK_KB`, default 256) with
+nothing below it; a fiber that needs more overwrites the block beneath it,
+often another fiber's saved frame, and that fiber then crashes on resume at a
+guest address. The `iu-ps5` SDK branch makes the size a setting and logs
+`Fiber N: host stack overflow` when a fiber's guard pattern is damaged.
 
 ## What the PS5 port changes
 
