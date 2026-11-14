@@ -119,6 +119,11 @@ void InitializeTitle() {
   // (src/ps5/iu_ps5_app.h). HOME points there too for anything that asks.
   setenv("HOME", "/app0", 0);
   ReadEnvFile();
+  // The SDK's PS5-only hot-page uploads (shared_memory_hot_pages) leave stale
+  // data in IU's title-screen HDR image: for a frame, part of the right half
+  // shows the left half (runs 14-18, 2026-11-14). Off unless ps5-env.txt
+  // sets REX_SHARED_MEMORY_HOT_PAGES itself.
+  setenv("REX_SHARED_MEMORY_HOT_PAGES", "false", 0);
 }
 
 constexpr int kFatalSignals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGSYS, SIGABRT, SIGTRAP};
