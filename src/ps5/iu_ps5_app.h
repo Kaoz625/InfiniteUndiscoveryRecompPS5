@@ -28,6 +28,8 @@
 #include <string>
 
 #include <rex/cvar.h>
+#include <rex/perf/counter.h>
+#include <rex/ui/overlay/debug_overlay.h>
 #include <rex/logging.h>
 #include <rex/ppc/context.h>
 #include <rex/rex_app.h>
@@ -136,6 +138,18 @@ class InfiniteUndiscoveryApp : public rex::ReXApp {
       throw std::runtime_error("IU permanent disc mounts could not be prepared");
     }
     iu::ps5::Breadcrumb("setup: disc mounts ready");
+    // Frame rate for the debug overlay (L3 + R3, or REX_SHOW_DEBUG_OVERLAY):
+    // the SDK measures the guest's swaps, averaged, even in Release builds.
+    SetGuestFrameStats([]() {
+      rex::ui::FrameStats stats;
+      const int64_t frame_us = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kFrameTimeUs);
+      if (frame_us > 0) {
+        stats.frame_time_ms = double(frame_us) / 1000.0;
+        stats.fps = 1000000.0 / double(frame_us);
+        stats.frame_count = 1;  // non-zero: the overlay shows the line
+      }
+      return stats;
+    });
   }
 
   void OnPreLaunchModule() override { iu::ps5::Breadcrumb("launch: starting the guest"); }

@@ -124,6 +124,9 @@ void InitializeTitle() {
   // shows the left half (runs 14-18, 2026-11-14). Off unless ps5-env.txt
   // sets REX_SHARED_MEMORY_HOT_PAGES itself.
   setenv("REX_SHARED_MEMORY_HOT_PAGES", "false", 0);
+  // The debug overlay (L3 + R3) opens as a small frame-rate readout;
+  // REX_DEBUG_OVERLAY_COMPACT=false in ps5-env.txt brings back the full panel.
+  setenv("REX_DEBUG_OVERLAY_COMPACT", "true", 0);
 }
 
 constexpr int kFatalSignals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGSYS, SIGABRT, SIGTRAP};
