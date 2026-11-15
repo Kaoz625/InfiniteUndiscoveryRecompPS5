@@ -127,10 +127,18 @@ void InitializeTitle() {
   // The debug overlay (L3 + R3) opens as a small frame-rate readout;
   // REX_DEBUG_OVERLAY_COMPACT=false in ps5-env.txt brings back the full panel.
   setenv("REX_DEBUG_OVERLAY_COMPACT", "true", 0);
-  // Render at twice the game's resolution (run 27: much cleaner edges, frame
-  // rate unchanged; the console's GPU is mostly idle). ps5-env.txt can set
-  // REX_RESOLUTION_SCALE=1 (original) or 3.
-  setenv("REX_RESOLUTION_SCALE", "2", 0);
+  // Default look and pacing (runs 43-46, 2026-11-15): 60 fps at normal game
+  // speed, rendered at twice the game's width and its normal height, FXAA on
+  // the edges and contrast-adaptive sharpening 0.6 elsewhere. Full 2x
+  // (twice width and height) costs ~18-20 ms of GPU time per frame, too much
+  // for 60 fps; for that look at a locked 30, ps5-env.txt sets
+  // REX_RESOLUTION_SCALE=2 and IU_TARGET_FPS=30. IU_TARGET_FPS=0 keeps the
+  // game's own limiter value (30).
+  setenv("IU_TARGET_FPS", "60", 0);
+  setenv("REX_RESOLUTION_SCALE", "1", 0);
+  setenv("REX_DRAW_RESOLUTION_SCALE_X", "2", 0);
+  setenv("REX_SWAP_POST_EFFECT", "fxaa", 0);
+  setenv("REX_SWAP_SHARPNESS", "0.6", 0);
   // 16x anisotropic texture filtering (SDK default 4x): sharper floors and
   // walls at a distance, no frame-rate cost seen (run 29).
   setenv("REX_ANISOTROPIC_OVERRIDE", "5", 0);
