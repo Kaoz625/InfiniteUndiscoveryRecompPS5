@@ -131,6 +131,9 @@ void InitializeTitle() {
   // rate unchanged; the console's GPU is mostly idle). ps5-env.txt can set
   // REX_RESOLUTION_SCALE=1 (original) or 3.
   setenv("REX_RESOLUTION_SCALE", "2", 0);
+  // 16x anisotropic texture filtering (SDK default 4x): sharper floors and
+  // walls at a distance, no frame-rate cost seen (run 29).
+  setenv("REX_ANISOTROPIC_OVERRIDE", "5", 0);
 }
 
 constexpr int kFatalSignals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGSYS, SIGABRT, SIGTRAP};
