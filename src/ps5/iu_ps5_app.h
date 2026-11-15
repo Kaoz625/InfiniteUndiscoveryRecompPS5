@@ -138,6 +138,10 @@ class InfiniteUndiscoveryApp : public rex::ReXApp {
       throw std::runtime_error("IU permanent disc mounts could not be prepared");
     }
     iu::ps5::Breadcrumb("setup: disc mounts ready");
+    if (const char* v = std::getenv("IU_DISC_SWAP_SELFTEST"); v && *v && *v != '0') {
+      iu::ps5::Breadcrumb(iu::disc_swap::SelfTest() ? "setup: disc swap self-test passed"
+                                                    : "setup: disc swap self-test FAILED");
+    }
     // Frame rate for the debug overlay (L3 + R3, or REX_SHOW_DEBUG_OVERLAY):
     // the SDK measures the guest's swaps, averaged, even in Release builds.
     SetGuestFrameStats([]() {

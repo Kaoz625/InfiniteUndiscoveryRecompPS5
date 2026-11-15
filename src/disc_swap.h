@@ -351,6 +351,53 @@ inline void Hook_XamSwapDisc(PPCContext& ctx, uint8_t* base) {
   ctx.r3.u64 = 0; // X_STATUS_SUCCESS
 }
 
+// Self-test of the swap machinery without playing to the end of Disc 1 (set
+// IU_DISC_SWAP_SELFTEST=1, e.g. in the PS5 ps5-env.txt). Runs before the guest
+// starts: swaps to Disc 2 through the real hook, checks that game:, d: and
+// Cdrom0 now resolve into the Disc 2 folder, swaps back to Disc 1 and checks
+// again. Logs DISC_SELFTEST lines; the game then starts on Disc 1 as usual.
+// It doesn't exercise the game's own swap prompt or its Disc 2 loading.
+inline bool SelfTest() {
+  auto* vfs = rex::system::kernel_state()->file_system();
+  if (!vfs) {
+    LogSwap("DISC_SELFTEST_FAILED reason=\"no file system\"");
+    return false;
+  }
+  auto check = [&](uint32_t disc) {
+    bool ok = true;
+    std::filesystem::path expected;
+    {
+      std::lock_guard lock(g_state.mutex);
+      expected = g_state.mounts[disc - 1].host_path;
+    }
+    for (auto alias : kAliases) {
+      for (const char* name : {"default.xex", "ud1.bin", "ud2.bin"}) {
+        std::string path = std::string(alias) + "\\" + name;
+        auto* entry = dynamic_cast<rex::filesystem::HostPathEntry*>(vfs->ResolvePath(path));
+        std::error_code ec;
+        const bool here = entry && std::filesystem::equivalent(entry->host_path(), expected / name, ec);
+        LogSwap("DISC_SELFTEST disc=%u %s -> %s size=%llu %s", disc, path.c_str(),
+                entry ? entry->host_path().string().c_str() : "(not found)",
+                entry ? (unsigned long long)entry->size() : 0ull, here ? "OK" : "WRONG");
+        ok = ok && here;
+      }
+    }
+    return ok;
+  };
+  PPCContext ctx{};
+  bool ok = check(1);
+  ctx.r3.u64 = 2;
+  ctx.r4.u64 = 0;  // no completion event to signal
+  Hook_XamSwapDisc(ctx, nullptr);
+  ok = ok && ctx.r3.u32 == 0 && GetCurrentDisc() == 2 && check(2);
+  ctx = PPCContext{};
+  ctx.r3.u64 = 1;
+  Hook_XamSwapDisc(ctx, nullptr);
+  ok = ok && ctx.r3.u32 == 0 && GetCurrentDisc() == 1 && check(1);
+  LogSwap(ok ? "DISC_SELFTEST_PASSED" : "DISC_SELFTEST_FAILED");
+  return ok;
+}
+
 inline bool Install(rex::Runtime* runtime, const std::filesystem::path& portable_root) {
   std::lock_guard<std::mutex> lock(g_state.mutex);
   if (g_state.installed) return true;
