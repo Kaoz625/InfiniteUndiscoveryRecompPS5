@@ -7,8 +7,22 @@ with Mesa's RADV linked into the title, and runs on the SDK's PS5 port
 (github.com/dragonscales123/rexglue-sdk-PS5, branch `iu-ps5`: the `fable2-ps5`
 branch, where the Xenos GPU works on the console, plus fixes this game needs).
 
-Status: **work in progress.** Boots to the opening logos; the first runs
-crashed when the opening credits start (fiber host stacks, see below).
+Status: **work in progress.** Plays the opening logos and intro movie and
+reaches the title screen with correct brightness, with sound. Gameplay past
+the title screen hasn't been tested yet.
+
+Fixed so far on the PS5 (SDK branch `iu-ps5`):
+
+- A crash when the opening credits start: the game switches to the fiber
+  that is already running, and the PS5 fiber switch now returns at once
+  instead of resuming from a stale stack pointer.
+- Everything far too dark: the Vulkan shader translator read a texture's
+  exponent bias from the wrong fetch-constant word, so the game's HDR scene
+  reached the tone mapper 32 times too dark.
+- A flickering half-screen copy on the title screen: the SDK's PS5-only
+  "hot page" uploads left stale data in the HDR scene image. They are off by
+  default for this game (`src/platform/ps5_title.cpp`);
+  `REX_SHARED_MEMORY_HOT_PAGES=true` in `ps5-env.txt` turns them back on.
 
 You need your own copy of Infinite Undiscovery (USA or Europe). Nothing from
 the game is in this repository, and nothing derived from it should be
@@ -78,7 +92,11 @@ there: copy the files as they are on your discs.
 
 Logs go to `logs/runtime.log`; `boot.txt` records start-up and any early
 crash, and the SDK writes faults to `faults.txt`. `ps5-env.txt` (from
-`ps5-env.example.txt`) sets SDK options.
+`ps5-env.example.txt`) sets SDK options, one `REX_<SETTING>=value` per line.
+Diagnostic options in the `iu-ps5` SDK branch: `REX_GPU_LOG_SHADER_DRAWS`
+(pixel shader hashes: log their constants and texture fetches),
+`REX_GPU_LOG_RESOLVE_SUMMARY` (every N resolves, list each distinct resolve,
+rarest first), `REX_GPU_GAMMA_RAMP_BYPASS` and `REX_DUMP_SHADERS` (a folder).
 
 ## Fibers
 
@@ -88,6 +106,8 @@ nothing below it; a fiber that needs more overwrites the block beneath it,
 often another fiber's saved frame, and that fiber then crashes on resume at a
 guest address. The `iu-ps5` SDK branch makes the size a setting and logs
 `Fiber N: host stack overflow` when a fiber's guard pattern is damaged.
+The default has been enough so far; the opening-credits crash turned out to be
+a switch to the running fiber, not an overflow.
 
 ## What the PS5 port changes
 
