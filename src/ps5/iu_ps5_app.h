@@ -36,6 +36,7 @@
 #include <rex/system/kernel_state.h>
 
 #include "disc_swap.h"
+#include "frame_rate.h"
 
 namespace iu::ps5 {
 // src/platform/ps5_title.cpp
