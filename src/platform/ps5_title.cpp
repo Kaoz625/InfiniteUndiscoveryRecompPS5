@@ -127,6 +127,10 @@ void InitializeTitle() {
   // The debug overlay (L3 + R3) opens as a small frame-rate readout;
   // REX_DEBUG_OVERLAY_COMPACT=false in ps5-env.txt brings back the full panel.
   setenv("REX_DEBUG_OVERLAY_COMPACT", "true", 0);
+  // Render at twice the game's resolution (run 27: much cleaner edges, frame
+  // rate unchanged; the console's GPU is mostly idle). ps5-env.txt can set
+  // REX_RESOLUTION_SCALE=1 (original) or 3.
+  setenv("REX_RESOLUTION_SCALE", "2", 0);
 }
 
 constexpr int kFatalSignals[] = {SIGSEGV, SIGBUS, SIGILL, SIGFPE, SIGSYS, SIGABRT, SIGTRAP};
