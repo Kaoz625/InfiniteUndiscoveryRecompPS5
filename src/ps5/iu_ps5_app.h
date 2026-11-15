@@ -145,6 +145,9 @@ class InfiniteUndiscoveryApp : public rex::ReXApp {
     }
     // Frame rate for the debug overlay (L3 + R3, or REX_SHOW_DEBUG_OVERLAY):
     // the SDK measures the guest's swaps, averaged, even in Release builds.
+#ifdef IU_BUILD_ID
+    rex::ui::SetDebugOverlayBuildLabel(IU_BUILD_ID);
+#endif
     SetGuestFrameStats([]() {
       rex::ui::FrameStats stats;
       const int64_t frame_us = rex::perf::GetSnapshotCounter(rex::perf::CounterId::kFrameTimeUs);

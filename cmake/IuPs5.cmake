@@ -46,3 +46,10 @@ file(WRITE "${_iu_ps5_link_config}"
 set(CMAKE_CXX_LINK_EXECUTABLE
     "bash \"${CMAKE_SOURCE_DIR}/ps5/link-title.sh\" \"${_iu_ps5_link_config}\" <TARGET> <OBJECTS> <LINK_LIBRARIES>")
 set(CMAKE_C_LINK_EXECUTABLE "${CMAKE_CXX_LINK_EXECUTABLE}")
+
+# Build id for the debug overlay (ps5/build.sh passes it), on main.cpp only.
+set(IU_BUILD_ID "" CACHE STRING "Build id shown in the debug overlay")
+if(IU_BUILD_ID)
+    set_property(SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp APPEND PROPERTY
+        COMPILE_DEFINITIONS "IU_BUILD_ID=\"${IU_BUILD_ID}\"")
+endif()

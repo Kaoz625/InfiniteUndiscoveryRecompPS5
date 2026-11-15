@@ -150,8 +150,15 @@ if [[ -d $build && -f $toolchain_record && $(cat "$toolchain_record") != "$toolc
 fi
 mkdir -p "$build"
 echo "$toolchain" > "$toolchain_record"
+# Shown in the debug overlay (L3 + R3): commit count and hash of this tree and
+# of the SDK. Only src/main.cpp gets it, so a new id doesn't rebuild the rest.
+build_id="build $(git -C "$root" rev-list --count HEAD 2>/dev/null || echo ?) \
+$(git -C "$root" rev-parse --short=8 HEAD 2>/dev/null || echo ?) \
+sdk $(git -C "$rexsdk" rev-parse --short=7 HEAD 2>/dev/null || echo ?)"
+echo "$build_id"
 configure() {
     cmake -S "$root" -B "$build" -G Ninja \
+        -DIU_BUILD_ID="$build_id" \
         -DCMAKE_TOOLCHAIN_FILE="$toolchain" \
         -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_FLAGS_RELEASE="-O2 -DNDEBUG" -DCMAKE_CXX_FLAGS_RELEASE="-O2 -DNDEBUG" \
