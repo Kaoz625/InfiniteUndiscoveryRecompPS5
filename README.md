@@ -8,6 +8,28 @@
   Native Windows x64 recompilation with portable asset setup.
 </p>
 
+> ## PS5 port (this fork)
+>
+> This fork's `ps5-port` branch builds Infinite Undiscovery Recomp as a **homebrew title for a jailbroken PS5** (title id `PPSA99215`). It runs on [rexglue-sdk-PS5](https://github.com/dragonscales123/rexglue-sdk-PS5) (branch `iu-ps5`), using the SDK's Xenos GPU emulation on Vulkan with Mesa's RADV linked into the title.
+>
+> **Status: playable, work in progress.** Tested on the console so far:
+>
+> - Boots through the logos and intro movie to the title screen with sound and correct brightness.
+> - New game, field exploration, battles, treasure chests, cutscenes, saving and loading.
+> - **60 fps at normal game speed** in the areas tested (dips to 56–59 are occasional), or a locked 30 fps at full 2x resolution.
+> - Rendered at twice the game's width with FXAA on edges and contrast-adaptive sharpening, plus 16x anisotropic filtering.
+> - Disc 2 is mounted at start and a disc-swap self-test passes. The game's own Disc 1 → Disc 2 change hasn't been played to on the PS5 yet.
+> - An on-screen FPS / frame-time readout with the build number (L3 + R3).
+>
+> Not yet on the PS5: DLC installation, Save Anywhere and the recovery tools (F-keys on Windows), and a full playthrough.
+>
+> Fixes this port needed so far include a fiber-switch crash at the opening credits, a shader-translator bug that made every scene far too dark, a title-screen flicker, and lock contention that held gameplay at 18–25 fps.
+>
+> You need your own copy of the game (USA or Europe). No game files or anything derived from them are in this repository. Build, install and settings: **[docs/PS5.md](docs/PS5.md)**.
+>
+> Everything below this box is the upstream Windows project's README ([doc-haz/infinite-undiscovery-recomp](https://github.com/doc-haz/infinite-undiscovery-recomp)) and describes the Windows build.
+
+
 Infinite Undiscovery Recomp is a native Windows x64 recompilation of **Infinite Undiscovery** (Xbox 360, 2008), built around the **ReXGlue / XenonRecomp** ecosystem.
 
 The project includes an integrated native setup system for importing game data from a legally obtained copy of the game.
